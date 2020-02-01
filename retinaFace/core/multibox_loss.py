@@ -3,8 +3,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from utils.box_utils import match, log_sum_exp
-from core.config import cfg_mnet
-GPU = cfg_mnet['gpu_train']
 
 
 class MultiBoxLoss(nn.Module):
@@ -42,7 +40,7 @@ class MultiBoxLoss(nn.Module):
         self.neg_overlap = neg_overlap
         self.variance = [0.1, 0.2]
 
-    def forward(self, predictions, priors, targets):
+    def forward(self, predictions, priors, targets, using_gpu):
         """Multibox Loss
         Args:
             predictions (tuple): A tuple containing loc preds, conf preds,
@@ -71,12 +69,14 @@ class MultiBoxLoss(nn.Module):
             defaults = priors.data
             # 关键函数, 实现候选框与真实框之间的匹配
             match(self.threshold, truths, defaults, self.variance, labels, landms, loc_t, conf_t, landm_t, idx)
-        if GPU:
+        
+        zeros = torch.tensor(0)
+        if using_gpu:
             loc_t = loc_t.cuda()
             conf_t = conf_t.cuda()
             landm_t = landm_t.cuda()
+            zeros = zeros.cuda()
 
-        zeros = torch.tensor(0).cuda()
         # landm Loss (Smooth L1)
         # Shape: [batch,num_priors,10]
         pos1 = conf_t > zeros          # 筛选出 >0 的box下标(大部分都是=0的)

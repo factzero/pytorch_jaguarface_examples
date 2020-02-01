@@ -69,6 +69,7 @@ def train():
     rgb_mean = (104, 117, 123)  # bgr order
     num_classes = 2
     img_dim = cfg['image_size']
+    using_gpu = cfg['gpu_train']
     num_gpu = cfg['ngpu']
     batch_size = cfg['batch_size']
     max_epoch = cfg['epoch']
@@ -86,15 +87,17 @@ def train():
         print('Loading resume network...')
         net = resume_net_param(net, args.resume_net)
 
-    net = net.cuda()
-    cudnn.benchmark = True
-    optimizer = optim.SGD(net.parameters(), lr=initial_lr, momentum=momentum, weight_decay=weight_decay)
-    criterion = MultiBoxLoss(num_classes, 0.35, True, 0, True, 7, 0.35, False)
-
     priorbox = PriorBox(cfg, image_size=(img_dim, img_dim))
     with torch.no_grad():
         priors = priorbox.forward()
+    
+    if using_gpu:
         priors = priors.cuda()
+        net = net.cuda()
+        cudnn.benchmark = True
+
+    optimizer = optim.SGD(net.parameters(), lr=initial_lr, momentum=momentum, weight_decay=weight_decay)
+    criterion = MultiBoxLoss(num_classes, 0.35, True, 0, True, 7, 0.35, False)
 
     net.train()
     print('Loading Dataset...')
@@ -125,15 +128,16 @@ def train():
 
         # load train data
         images, targets = next(batch_iterator)
-        images = images.cuda()
-        targets = [anno.cuda() for anno in targets]
+        if using_gpu:
+            images = images.cuda()
+            targets = [anno.cuda() for anno in targets]
 
         # forward
         out = net(images)
 
         # backprop
         optimizer.zero_grad()
-        loss_l, loss_c, loss_landm = criterion(out, priors, targets)
+        loss_l, loss_c, loss_landm = criterion(out, priors, targets, using_gpu)
         loss = cfg['loc_weight'] * loss_l + loss_c + loss_landm
         loss.backward()
         optimizer.step()
