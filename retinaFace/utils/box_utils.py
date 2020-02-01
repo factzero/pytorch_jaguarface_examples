@@ -1,3 +1,4 @@
+# -*- coding: UTF-8 -*-
 import torch
 import numpy as np
 
@@ -10,6 +11,7 @@ def point_form(boxes):
     Return:
         boxes: (tensor) Converted xmin, ymin, xmax, ymax form of boxes.
     """
+    # 将(cx, cy, w, h) 形式的box坐标转换成 (xmin, ymin, xmax, ymax) 形式
     return torch.cat((boxes[:, :2] - boxes[:, 2:]/2,     # xmin, ymin
                      boxes[:, :2] + boxes[:, 2:]/2), 1)  # xmax, ymax
 
@@ -36,14 +38,21 @@ def intersect(box_a, box_b):
       box_b: (tensor) bounding boxes, Shape: [B,4].
     Return:
       (tensor) intersection area, Shape: [A,B].
+        box_a 与 box_b 两个集合中任意两个 box 的交集, 
+        其中res[i][j]代表box_a中第i个box与box_b中第j个box的交集.(非对称矩阵)
     """
+    # 先将两个box的维度扩展至相同维度: [num_obj, num_priors, 4], 然后计算面积的交集
     A = box_a.size(0)
     B = box_b.size(0)
+    # box_a 左上角/右下角坐标 expand以后, 维度会变成(A,B,2), 其中, 具体可看 expand 的相关原理. 
+    #       box_b也是同理, 这样做是为了得到a中某个box与b中某个box的左上角(min_xy)的较大者(max)
+    # unsqueeze 为增加维度的数量, expand 为扩展维度的大小
     max_xy = torch.min(box_a[:, 2:].unsqueeze(1).expand(A, B, 2),
                        box_b[:, 2:].unsqueeze(0).expand(A, B, 2))
     min_xy = torch.max(box_a[:, :2].unsqueeze(1).expand(A, B, 2),
                        box_b[:, :2].unsqueeze(0).expand(A, B, 2))
     inter = torch.clamp((max_xy - min_xy), min=0)
+    # 高×宽, 返回交集的面积, shape 刚好为 [A, B]
     return inter[:, :, 0] * inter[:, :, 1]
 
 
@@ -59,12 +68,14 @@ def jaccard(box_a, box_b):
     Return:
         jaccard overlap: (tensor) Shape: [box_a.size(0), box_b.size(0)]
     """
+    # 任意两个box的交集面积, shape为[A, B], 即[num_obj, num_priors]
     inter = intersect(box_a, box_b)
     area_a = ((box_a[:, 2]-box_a[:, 0]) *
               (box_a[:, 3]-box_a[:, 1])).unsqueeze(1).expand_as(inter)  # [A,B]
     area_b = ((box_b[:, 2]-box_b[:, 0]) *
               (box_b[:, 3]-box_b[:, 1])).unsqueeze(0).expand_as(inter)  # [A,B]
     union = area_a + area_b - inter
+    # [A, B], 返回任意两个box之间的交并比, res[i][j] 代表box_a中的第i个box与box_b中的第j个box之间的交并比.
     return inter / union  # [A,B]
 
 
@@ -112,13 +123,19 @@ def match(threshold, truths, priors, variances, labels, landms, loc_t, conf_t, l
     Return:
         The matched indices corresponding to 1)location 2)confidence 3)landm preds.
     """
+    """
+    threshold: (float) 确定是否匹配的交并比阈值
+    truths: (tensor: [num_obj, 4]) 存储真实 box 的边框坐标
+    priors: (tensor: [num_priors, 4], 存储推荐框的坐标, 注意, 此时的框是 default box
+    variances: cfg['variance'], [0.1, 0.2], 用于将坐标转换成方便训练的形式(参考RCNN系列对边框坐标的处理)
+    labels: (tensor: [num_obj]), 代表了每个真实 box 对应的类别的编号
+    """
     # jaccard index
-    overlaps = jaccard(
-        truths,
-        point_form(priors)
-    )
+    overlaps = jaccard(truths, point_form(priors))
+
     # (Bipartite Matching)
-    # [1,num_objects] best prior for each ground truth
+    # [num_objects, 1] best prior for each ground truth
+    #  得到对于每个 gt box 来说的匹配度最高的 prior box, 前者存储交并比, 后者存储prior box在num_priors中的位置
     best_prior_overlap, best_prior_idx = overlaps.max(1, keepdim=True)
 
     # ignore hard gt
@@ -130,21 +147,45 @@ def match(threshold, truths, priors, variances, labels, landms, loc_t, conf_t, l
         return
 
     # [1,num_priors] best ground truth for each prior
+    # 得到对于每个 prior box 来说的匹配度最高的 gt box
     best_truth_overlap, best_truth_idx = overlaps.max(0, keepdim=True)
+    # 维度压缩
     best_truth_idx.squeeze_(0)
     best_truth_overlap.squeeze_(0)
     best_prior_idx.squeeze_(1)
     best_prior_idx_filter.squeeze_(1)
     best_prior_overlap.squeeze_(1)
     best_truth_overlap.index_fill_(0, best_prior_idx_filter, 2)  # ensure best prior
+    # 该语句会将与gt box匹配度最好的prior box 的交并比置为 2, 确保其最大, 以免防止某些 gtbox 没有匹配的 priorbox.
+
+    # 假想一种极端情况, 所有的priorbox与某个gtbox(标记为G)的交并比为1, 而其他gtbox分别有一个交并比
+    # 最高的priorbox, 但是肯定小于1(因为其他的gtbox与G的交并比肯定小于1), 这样一来, 就会使得所有
+    # 的priorbox都与G匹配, 为了防止这种情况, 我们将那些对gtbox来说, 具有最高交并比的priorbox,
+    # 强制进行互相匹配, 即令best_truth_idx[best_prior_idx[j]] = j, 详细见下面的for循环
+
+    # 注意!!: 因为 gt box 的数量要远远少于 prior box 的数量, 因此, 同一个 gt box 会与多个 prior box 匹配.
+    
+    
     # TODO refactor: index  best_prior_idx with long tensor
     # ensure every gt matches with its prior of max overlap
     for j in range(best_prior_idx.size(0)):     # 判别此anchor是预测哪一个boxes
         best_truth_idx[best_prior_idx[j]] = j
+        # best_prior_idx[j] 代表与第j个gt box交并比最高的 prior box 的下标,
+        # 将与该gtbox匹配度最好的 prior box 的下标改为j, 由此,完成了该 gtbox 与第j个 prior box 的匹配.
+        # 这里的循环只会进行num_obj次, 剩余的匹配为 best_truth_idx 中原本的值.
+        # 这里处理的情况是：
+        #   priorbox中第i个box与gtbox中第k个box的交并比最高, 即 best_truth_idx[i]= k
+        #   但对best_prior_idx[k]来说, 它却与priorbox的第l个box有最高的交并比, 即best_prior_idx[k]=l
+        #   而对gtbox的另一个边框gtbox[j]来说, 它与priorbox[i]的交并比最大, 即best_prior_idx[j] = i.
+        #   那么, 我们就应该将best_truth_idx[i]=k 修改成best_truth_idx[i]=j. 即令priorbox[i]与gtbox[j]对应.
+        # 这样做的原因: 防止某个gtbox没有匹配的 prior box.
+
+    # truths 的shape 为[num_objs, 4], 而best_truth_idx是一个指示下标的列表
+    # 会返回一个shape为 [num_priors, 4], 代表的就是与每个priorbox匹配的gtbox的坐标值.
     matches = truths[best_truth_idx]            # Shape: [num_priors,4] 此处为每一个anchor对应的bbox取出来
-    conf = labels[best_truth_idx]               # Shape: [num_priors]      此处为每一个anchor对应的label取出来
+    conf = labels[best_truth_idx]               # Shape: [num_priors]   此处为每一个anchor对应的label取出来
     conf[best_truth_overlap < threshold] = 0    # label as background   overlap<0.35的全部作为负样本
-    loc = encode(matches, priors, variances)
+    loc = encode(matches, priors, variances)    # 返回编码后的中心坐标和宽高.
 
     matches_landm = landms[best_truth_idx]
     landm = encode_landm(matches_landm, priors, variances)
@@ -165,12 +206,18 @@ def encode(matched, priors, variances):
     Return:
         encoded boxes (tensor), Shape: [num_priors, 4]
     """
+    # 对边框坐标进行编码, 需要宽度方差和高度方差两个参数, 具体公式可以参见原文公式
+    # matched: [num_priors,4] 存储的是与priorbox匹配的gtbox的坐标. 形式为(xmin, ymin, xmax, ymax)
+    # priors: [num_priors, 4] 存储的是priorbox的坐标. 形式为(cx, cy, w, h)
 
     # dist b/t match center and prior's center
+    # 用互相匹配的gtbox的中心坐标减去priorbox的中心坐标, 获得中心坐标的偏移量
     g_cxcy = (matched[:, :2] + matched[:, 2:])/2 - priors[:, :2]
+    # 令中心坐标分别除以 d_i^w 和 d_i^h, 正如原文公式所示，参考SSD
     # encode variance
     g_cxcy /= (variances[0] * priors[:, 2:])
     # match wh / prior wh
+    # 令互相匹配的gtbox的宽高除以priorbox的宽高.
     g_wh = (matched[:, 2:] - matched[:, :2]) / priors[:, 2:]
     g_wh = torch.log(g_wh) / variances[1]
     # return target for smooth_l1_loss

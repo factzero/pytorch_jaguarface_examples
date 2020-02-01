@@ -77,6 +77,7 @@ if __name__ == "__main__":
     for i in range(5):
         image_path = "./data/1.jpg"
         img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
+        img_raw = cv2.resize(img_raw, (cfg['image_size'], cfg['image_size']))
         img = np.float32(img_raw)
         im_height, im_width, _ = img.shape
         scale = torch.Tensor([img.shape[1], img.shape[0], img.shape[1], img.shape[0]])
@@ -120,8 +121,7 @@ if __name__ == "__main__":
         scores = scores[order]
 
         # do NMS
-        dets = np.hstack((boxes, scores[:, np.newaxis])).astype(
-            np.float32, copy=False)
+        dets = np.hstack((boxes, scores[:, np.newaxis])).astype(np.float32, copy=False)
         keep = py_cpu_nms(dets, args.nms_threshold)
         # keep = nms(dets, args.nms_threshold,force_cpu=args.cpu)
         dets = dets[keep, :]
