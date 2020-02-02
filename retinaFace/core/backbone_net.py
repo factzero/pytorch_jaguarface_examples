@@ -27,7 +27,7 @@ def conv1x1sn_bn(in_c, out_c, stride, leaky=0):
     )
 
 
-def conv_dw(in_c, out_c, stride, leaky=0):
+def conv_dw(in_c, out_c, stride, leaky=0.1):
     return nn.Sequential(
         nn.Conv2d(in_c, in_c, 3, stride, 1, groups=in_c, bias=False),
         nn.BatchNorm2d(in_c),
