@@ -15,7 +15,7 @@ parser = argparse.ArgumentParser(description='Retinaface')
 parser.add_argument('--trained_model', default='./weights/mobilenet0.25_Final.pth', type=str,
                     help='Trained state_dict file path to open')
 parser.add_argument('--network', default='mobilenet0.25', help='Backbone network mobilenet0.25')
-parser.add_argument('--cpu', action="store_true", default=True, help='Use cpu inference')
+parser.add_argument('--cpu', action="store_true", default=False, help='Use cpu inference')
 parser.add_argument('--confidence_threshold', default=0.02, type=float, help='confidence_threshold')
 parser.add_argument('--top_k', default=5000, type=int, help='top_k')
 parser.add_argument('--nms_threshold', default=0.4, type=float, help='nms_threshold')
@@ -77,7 +77,7 @@ if __name__ == "__main__":
     for i in range(5):
         image_path = "./data/1.jpg"
         img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
-        img_raw = cv2.resize(img_raw, (cfg['image_size'], cfg['image_size']))
+        #img_raw = cv2.resize(img_raw, (cfg['image_size'], cfg['image_size']))
         img = np.float32(img_raw)
         im_height, im_width, _ = img.shape
         scale = torch.Tensor([img.shape[1], img.shape[0], img.shape[1], img.shape[0]])
