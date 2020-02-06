@@ -14,6 +14,7 @@ from core.multibox_loss import MultiBoxLoss
 from utils.prior_box import PriorBox
 from utils.wider_face import WiderFaceDetection, detection_collate
 from utils.data_augment import preproc
+import numpy as np
 
 
 parser = argparse.ArgumentParser(description='Retinaface Training')
@@ -46,6 +47,7 @@ def adjust_learning_rate(optimizer, gamma, epoch, step_index, iteration, epoch_s
 
 
 def resume_net_param(net, trained_model):
+    print('Loading trained model: {}'.format(trained_model))
     state_dict = torch.load(args.resume_net)
     # create new OrderedDict that does not contain `module.`
     from collections import OrderedDict
@@ -80,8 +82,11 @@ def train():
     gamma = args.gamma
     training_dataset = args.training_dataset
     save_folder = args.save_folder
+
+    if not os.path.exists(args.save_folder):
+        os.mkdir(args.save_folder)
     
-    net = RetinaFace(cfg=cfg, phase='test')
+    net = RetinaFace(cfg=cfg, phase='train')
 
     if args.resume_net is not None:
         print('Loading resume network...')
@@ -134,6 +139,22 @@ def train():
 
         # forward
         out = net(images)
+        '''
+        enc0 = out[0].detach().cpu().view(-1, 4).numpy()
+        enc1 = out[1].detach().cpu().view(-1, 2).numpy()
+        enc2 = out[2].detach().cpu().view(-1, 10).numpy()
+        np.savetxt('npresult0.txt', enc0)
+        np.savetxt('npresult1.txt', enc1)
+        np.savetxt('npresult2.txt', enc2)
+        dec0 = np.loadtxt('npresult0.txt')
+        dec1 = np.loadtxt('npresult1.txt')
+        dec2 = np.loadtxt('npresult2.txt')
+        dec0 = torch.FloatTensor(dec0).view(batch_size, -1, 4).cuda()
+        dec1 = torch.FloatTensor(dec1).view(batch_size, -1, 2).cuda()
+        dec2 = torch.FloatTensor(dec2).view(batch_size, -1, 10).cuda()
+        out1 = [dec0, dec1, dec2]
+        loss_l1, loss_c1, loss_landm1 = criterion(out1, priors, targets, using_gpu)
+        '''
 
         # backprop
         optimizer.zero_grad()

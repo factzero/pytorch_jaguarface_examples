@@ -104,10 +104,11 @@ class RetinaFace(nn.Module):
         ldm_regressions = torch.cat([self.LandmarkHead[i](feature) for i, feature in enumerate(features)], dim=1)
 
         if self.phase == 'train':
+            print("retinaface training model")
             output = (bbox_regressions, classifications, ldm_regressions)
         else:
-            output = (bbox_regressions, F.softmax(
-                classifications, dim=-1), ldm_regressions)
+            print("retinaface testing model")
+            output = (bbox_regressions, F.softmax(classifications, dim=-1), ldm_regressions)
         return output
 
 

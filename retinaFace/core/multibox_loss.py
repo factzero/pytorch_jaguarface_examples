@@ -63,9 +63,9 @@ class MultiBoxLoss(nn.Module):
         landm_t = torch.Tensor(num, num_priors, 10)
         conf_t = torch.LongTensor(num, num_priors)
         for idx in range(num):
-            truths = targets[idx][:, :4].data
-            labels = targets[idx][:, -1].data
-            landms = targets[idx][:, 4:14].data
+            truths = targets[idx][:, :4].data     # [num_objs, 4]
+            labels = targets[idx][:, -1].data     # [num_objs]
+            landms = targets[idx][:, 4:14].data   # [num_objs, 10]
             defaults = priors.data
             # 关键函数, 实现候选框与真实框之间的匹配
             match(self.threshold, truths, defaults, self.variance, labels, landms, loc_t, conf_t, landm_t, idx)
@@ -88,7 +88,6 @@ class MultiBoxLoss(nn.Module):
         landm_t = landm_t[pos_idx1].view(-1, 10)
         loss_landm = F.smooth_l1_loss(landm_p, landm_t, reduction='sum')
 
-
         pos = conf_t != zeros
         conf_t[pos] = 1
 
@@ -99,8 +98,10 @@ class MultiBoxLoss(nn.Module):
         loc_t = loc_t[pos_idx].view(-1, 4)
         loss_l = F.smooth_l1_loss(loc_p, loc_t, reduction='sum')
 
-        # Compute max conf across batch for hard negative mining
+        # Compute max conf across batch for hard negative mining        
         batch_conf = conf_data.view(-1, self.num_classes)
+        # conf_t: [batch, num_priors]
+        # loss_c: [batch*num_priors, 1], 计算每个priorbox预测后的损失
         loss_c = log_sum_exp(batch_conf) - batch_conf.gather(1, conf_t.view(-1, 1))
 
         # Hard Negative Mining
