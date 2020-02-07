@@ -19,8 +19,8 @@ parser.add_argument('--confidence_threshold', default=0.02, type=float, help='co
 parser.add_argument('--top_k', default=5000, type=int, help='top_k')
 parser.add_argument('--nms_threshold', default=0.4, type=float, help='nms_threshold')
 parser.add_argument('--keep_top_k', default=750, type=int, help='keep_top_k')
-parser.add_argument('--save_image', action="store_true", default=True, help='show detection results')
 parser.add_argument('--vis_thres', default=0.6, type=float, help='visualization_threshold')
+parser.add_argument('--video_path', default='', type=str, help='video path')
 args = parser.parse_args()
 
 
@@ -72,11 +72,18 @@ if __name__ == "__main__":
     print('Finished loading model!')
     device = torch.device("cpu" if args.cpu else "cuda")
     net = net.to(device)
+    
+    im_proc_w, im_proc_h = 640, 360
+    priorbox = PriorBox(cfg, image_size=(im_proc_h, im_proc_w))
+    priors = priorbox.forward()
+    priors = priors.to(device)
+    prior_data = priors.data
 
-    for i in range(5):
-        image_path = "./data/1.jpg"
-        img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
-        #img_raw = cv2.resize(img_raw, (cfg['image_size'], cfg['image_size']))
+    video_path = 0 if args.video_path == '' else args.video_path
+    vid = cv2.VideoCapture(video_path)
+    while True:
+        _, img_raw = vid.read()
+        img_raw = cv2.resize(img_raw, (im_proc_w, im_proc_h))
         img = np.float32(img_raw)
         im_height, im_width, _ = img.shape
         scale = torch.Tensor([img.shape[1], img.shape[0], img.shape[1], img.shape[0]])
@@ -89,25 +96,12 @@ if __name__ == "__main__":
         tic = time.time()
         loc, conf, landms = net(img)  # forward pass
         print('net forward time: {:.4f}'.format(time.time() - tic))
-        '''
-        enc0 = loc.detach().cpu().view(-1, 1).numpy()
-        enc1 = conf.detach().cpu().view(-1, 1).numpy()
-        enc2 = landms.detach().cpu().view(-1, 1).numpy()
-        np.savetxt('npresult0.txt', enc0)
-        np.savetxt('npresult1.txt', enc1)
-        np.savetxt('npresult2.txt', enc2)
-        '''
 
-        priorbox = PriorBox(cfg, image_size=(im_height, im_width))
-        priors = priorbox.forward()
-        priors = priors.to(device)
-        prior_data = priors.data
         boxes = decode(loc.data.squeeze(0), prior_data, cfg['variance'])
         boxes = boxes * scale
         boxes = boxes.cpu().numpy()
         scores = conf.squeeze(0).data.cpu().numpy()[:, 1]
-        landms = decode_landm(landms.data.squeeze(0),
-                              prior_data, cfg['variance'])
+        landms = decode_landm(landms.data.squeeze(0), prior_data, cfg['variance'])
         scale1 = torch.Tensor([img.shape[3], img.shape[2], img.shape[3], img.shape[2],
                                img.shape[3], img.shape[2], img.shape[3], img.shape[2],
                                img.shape[3], img.shape[2]])
@@ -139,30 +133,26 @@ if __name__ == "__main__":
 
         dets = np.concatenate((dets, landms), axis=1)
 
-        # show image
-        if args.save_image:
-            face_nums = 0
-            for b in dets:
-                if b[4] < args.vis_thres:
-                    continue
-                face_nums = face_nums + 1
-                text = "{:.4f}".format(b[4])
-                b = list(map(int, b))
-                cv2.rectangle(img_raw, (b[0], b[1]),
-                              (b[2], b[3]), (0, 0, 255), 2)
-                cx = b[0]
-                cy = b[1] + 12
-                cv2.putText(img_raw, text, (cx, cy),
-                            cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
+        for b in dets:
+            if b[4] < args.vis_thres:
+                continue
+            text = "{:.4f}".format(b[4])
+            b = list(map(int, b))
+            cv2.rectangle(img_raw, (b[0], b[1]), (b[2], b[3]), (0, 0, 255), 2)
+            cx = b[0]
+            cy = b[1] + 12
+            cv2.putText(img_raw, text, (cx, cy), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
 
-                # landms
-                cv2.circle(img_raw, (b[5], b[6]), 1, (0, 0, 255), 4)
-                cv2.circle(img_raw, (b[7], b[8]), 1, (0, 255, 255), 4)
-                cv2.circle(img_raw, (b[9], b[10]), 1, (255, 0, 255), 4)
-                cv2.circle(img_raw, (b[11], b[12]), 1, (0, 255, 0), 4)
-                cv2.circle(img_raw, (b[13], b[14]), 1, (255, 0, 0), 4)
-            # save image
-            print('face_nums : {}'.format(face_nums))
+            # landms
+            cv2.circle(img_raw, (b[5], b[6]), 1, (0, 0, 255), 4)
+            cv2.circle(img_raw, (b[7], b[8]), 1, (0, 255, 255), 4)
+            cv2.circle(img_raw, (b[9], b[10]), 1, (255, 0, 255), 4)
+            cv2.circle(img_raw, (b[11], b[12]), 1, (0, 255, 0), 4)
+            cv2.circle(img_raw, (b[13], b[14]), 1, (255, 0, 0), 4)
+        
+        cv2.imshow('output', img_raw)
+        if cv2.waitKey(1) == ord('q'):
+            break
+    
+    cv2.destroyAllWindows()
 
-            name = "test.jpg"
-            cv2.imwrite(name, img_raw)

@@ -8,8 +8,7 @@ import torch
 from core.config import cfg_mnet
 from core.retinaface import RetinaFace
 from utils.prior_box import PriorBox
-from utils.box_utils import decode, decode_landm
-from utils.nms.py_cpu_nms import py_cpu_nms
+from utils.box_utils import decode, decode_landm, nms
 from utils.timer import Timer
 
 
@@ -152,8 +151,7 @@ if __name__ == "__main__":
 
         # do NMS
         dets = np.hstack((boxes, scores[:, np.newaxis])).astype(np.float32, copy=False)
-        keep = py_cpu_nms(dets, args.nms_threshold)
-        # keep = nms(dets, args.nms_threshold,force_cpu=args.cpu)
+        keep = nms(dets, args.nms_threshold)
         dets = dets[keep, :]
         landms = landms[keep]
 
