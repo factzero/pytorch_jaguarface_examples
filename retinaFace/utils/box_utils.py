@@ -171,7 +171,7 @@ def match(threshold, truths, priors, variances, labels, landms, loc_t, conf_t, l
     for j in range(best_prior_idx.size(0)):     # 判别此anchor是预测哪一个boxes
         best_truth_idx[best_prior_idx[j]] = j
         # best_prior_idx[j] 代表与第j个gt box交并比最高的 prior box 的下标,
-        # 将与该gtbox匹配度最好的 prior box 的下标改为j, 由此,完成了该 gtbox 与第j个 prior box 的匹配.
+        # 将与该gtbox匹配度最好的 prior box 的下标改为j, 由此,完成了该 gtbox 与第best_prior_idx[j]个 prior box 的匹配.
         # 这里的循环只会进行num_obj次, 剩余的匹配为 best_truth_idx 中原本的值.
         # 这里处理的情况是：
         #   priorbox中第i个box与gtbox中第k个box的交并比最高, 即 best_truth_idx[i]= k
