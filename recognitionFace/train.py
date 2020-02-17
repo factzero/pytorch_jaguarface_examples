@@ -70,7 +70,7 @@ def train():
 
     net.train()
     for epoch in range(start_epoch, max_epoch):
-        print('Epoch:{}/{} '.format(epoch, max_epoch))
+        print('Epoch:{}/{}, batch:{}'.format(epoch, max_epoch, cfg['batch_size']))
         for imgs, labels in tqdm(iter(loader)):
             imgs = imgs.to(device)
             labels = labels.to(device)
