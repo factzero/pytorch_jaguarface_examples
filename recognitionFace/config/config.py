@@ -2,13 +2,10 @@
 
 cfg = {
     'name': 'recognition face ',
-    'network': 'resnet18',
     'gpu': True,
-    'data_root': 'D:/80dataset',
-    'data_folder': 'D:/80dataset/faces_emore/imgs/',
     'data_mode': 'emore',
     'epoch': 250,
-    'batch_size': 8,
+    'batch_size': 64,
     'pin_memory': True,
     'num_workers': 3,
     'optimizer': 'sgd',

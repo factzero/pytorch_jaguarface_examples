@@ -13,9 +13,9 @@ def get_train_dataset(imgs_folder):
     return ds, class_num
 
 
-def get_train_loader(conf):
+def get_train_loader(conf, data_folder):
     if conf['data_mode'] == 'emore':
-        ds, class_num = get_train_dataset(conf['data_folder'])
+        ds, class_num = get_train_dataset(data_folder)
     loader = DataLoader(ds, batch_size=conf['batch_size'], shuffle=True, 
                         pin_memory=conf['pin_memory'], num_workers=conf['num_workers'])
     return loader, class_num
